@@ -21,9 +21,17 @@ body {
   transform: translateY(-2px);
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
 }
-.action-button:active {
-  transform: translateY(0);
-}
 #video-display-bg {
   background: linear-gradient(160deg, #1a202c 0%, #2d3748 100%);
+}
+@keyframes progressAnimation {
+  from {
+    width: 0%;
+  }
+  to {
+    width: 100%;
+  }
+}
+.progress-bar-animate {
+  animation: progressAnimation 5s linear forwards;
 }
