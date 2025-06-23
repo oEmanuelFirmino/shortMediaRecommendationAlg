@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Simulador de Algoritmo de Recomendação</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./src/css/style.css" />
+  </head>
+  <body
+    class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 flex items-center justify-center p-4 min-h-screen"
+  >
+    <div class="max-w-5xl w-full">
+      <h1 class="text-3xl font-bold text-center mb-2">
+        Simulador de Algoritmo de Recomendação
+      </h1>
+      <p class="text-center text-gray-500 dark:text-gray-400 mb-8">
+        Interaja com os vídeos e veja como o algoritmo aprende suas
+        preferências.
+      </p>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div
+          class="bg-white dark:bg-gray-800 rounded-3xl p-4 border-4 border-gray-300 dark:border-gray-700 shadow-2xl"
+        >
+          <div
+            class="relative aspect-video bg-black rounded-xl overflow-hidden"
+          >
+            <div id="video-display-bg" class="absolute inset-0"></div>
+            <div
+              id="video-display"
+              class="absolute inset-0 flex flex-col items-center justify-center text-white transition-opacity duration-500 p-4 text-center"
+            >
+              <h2 id="video-title" class="text-2xl sm:text-3xl font-bold"></h2>
+              <p id="video-category" class="text-lg mt-2"></p>
+            </div>
+            <div
+              class="absolute bottom-2 left-2 text-white bg-black/50 px-3 py-1 rounded-md font-semibold text-sm"
+            >
+              @canal_simulado
+            </div>
+          </div>
+          <div class="mt-4 flex justify-around">
+            <button
+              onclick="handleInteraction('like')"
+              class="action-button bg-green-500 hover:bg-green-600 text-white rounded-full p-4 text-2xl"
+              title="Gostei"
+            >
+              👍
+            </button>
+            <button
+              onclick="handleInteraction('dislike')"
+              class="action-button bg-red-500 hover:bg-red-600 text-white rounded-full p-4 text-2xl"
+              title="Não Gostei"
+            >
+              👎
+            </button>
+            <button
+              onclick="handleInteraction('skip')"
+              class="action-button bg-gray-500 hover:bg-gray-600 text-white rounded-full p-4 text-2xl"
+              title="Pular"
+            >
+              ⏭️
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+          <h2 class="text-2xl font-bold mb-4">Análise do Algoritmo</h2>
+          <div class="mb-4">
+            <label class="block font-semibold mb-1"
+              >Taxa de Aprendizagem (α):
+              <span id="alpha-value" class="font-bold text-blue-500"
+                >0.10</span
+              ></label
+            >
+            <input
+              id="alpha-slider"
+              type="range"
+              min="0.01"
+              max="1"
+              step="0.01"
+              value="0.1"
+              class="w-full h-2 rounded-lg bg-gray-200 dark:bg-gray-700 appearance-none cursor-pointer"
+            />
+          </div>
+          <div class="mb-4">
+            <label class="block font-semibold mb-1"
+              >Taxa de Exploração (ε):
+              <span id="epsilon-value" class="font-bold text-green-500"
+                >0.20</span
+              ></label
+            >
+            <input
+              id="epsilon-slider"
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value="0.2"
+              class="w-full h-2 rounded-lg bg-gray-200 dark:bg-gray-700 appearance-none cursor-pointer"
+            />
+          </div>
+          <div class="mb-4">
+            <h3 class="font-semibold">
+              Afinidade (Produto Interno u · v):
+              <span id="affinity-score" class="font-mono text-blue-500"
+                >0.00</span
+              >
+            </h3>
+            <div
+              class="w-full bg-gray-200 dark:bg-gray-700 h-4 rounded-full overflow-hidden"
+            >
+              <div
+                id="affinity-bar"
+                class="h-full vector-bar bg-blue-500"
+                style="width: 0%"
+              ></div>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <h3 class="font-semibold mb-2">Seu Vetor de Preferências (u)</h3>
+              <div id="user-vector-viz" class="space-y-2"></div>
+            </div>
+            <div>
+              <h3 class="font-semibold mb-2">Vetor do Vídeo (v)</h3>
+              <div id="video-vector-viz" class="space-y-2"></div>
+            </div>
+          </div>
+          <div
+            class="mt-6 text-center font-mono p-3 bg-gray-100 dark:bg-gray-900 rounded-lg"
+          >
+            Gostei: u<sub>novo</sub> = (1 - α)u + αv <br />
+            Não Gostei: u<sub>novo</sub> = u - αv
+          </div>
+          <div class="mt-6 text-center">
+            <button
+              onclick="resetProfile()"
+              class="action-button bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 font-semibold"
+              title="Reiniciar a Simulação"
+            >
+              Resetar Perfil
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script src="src/js/main.js"></script>
+  </body>
+</html>
