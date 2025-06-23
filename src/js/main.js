@@ -1,5 +1,3 @@
-// --- MÓDULO DE GERAÇÃO DE VÍDEOS ---
-
 function normalize(vec) {
   const mag = Math.sqrt(vec.reduce((s, v) => s + v * v, 0));
   return mag === 0 ? vec : vec.map((v) => v / mag);
@@ -296,7 +294,7 @@ function generateVideoPool(videosPerCategory = 50) {
 }
 const videoPool = generateVideoPool(30);
 
-// --- LÓGICA PRINCIPAL DA SIMULAÇÃO ---
+
 const CATEGORIES = [
   { id: "humor", name: "Humor", color: "bg-yellow-500" },
   { id: "danca", name: "Dança", color: "bg-pink-500" },
@@ -324,7 +322,7 @@ const PERSONAS = [
 ];
 const SIMILARITY_THRESHOLD = 0.85;
 
-// DOM Elements
+
 const userVectorViz = document.getElementById("user-vector-viz"),
   videoVectorViz = document.getElementById("video-vector-viz"),
   videoTitleEl = document.getElementById("video-title"),
@@ -338,7 +336,7 @@ const alphaSlider = document.getElementById("alpha-slider"),
   epsilonSlider = document.getElementById("epsilon-slider"),
   epsilonValue = document.getElementById("epsilon-value");
 
-// Application State
+
 let userVector = normalize(new Array(CATEGORIES.length).fill(0.5)),
   currentVideo = null,
   alpha = parseFloat(alphaSlider.value),
