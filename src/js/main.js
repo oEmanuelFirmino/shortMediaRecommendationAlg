@@ -267,7 +267,6 @@ const CATEGORY_LABELS = {
     "Retrospectiva do Mês",
   ],
 };
-
 function generateVideoPool(videosPerCategory = 50) {
   const categories = Object.keys(CATEGORY_LABELS);
   const numCategories = categories.length;
@@ -275,7 +274,7 @@ function generateVideoPool(videosPerCategory = 50) {
   categories.forEach((primaryCat, primaryIdx) => {
     const titles = CATEGORY_LABELS[primaryCat];
     for (let j = 0; j < videosPerCategory; j++) {
-      const title = titles[j % titles.length];
+      const title = titles[j % titles.length] + ` #${j + 1}`;
       const vector = new Array(numCategories).fill(0);
       vector[primaryIdx] = 0.7 + Math.random() * 0.3;
       if (Math.random() < 0.5) {
@@ -295,11 +294,9 @@ function generateVideoPool(videosPerCategory = 50) {
   });
   return pool;
 }
-
-const videoPool = generateVideoPool(50);
+const videoPool = generateVideoPool(30);
 
 // --- LÓGICA PRINCIPAL DA SIMULAÇÃO ---
-
 const CATEGORIES = [
   { id: "humor", name: "Humor", color: "bg-yellow-500" },
   { id: "danca", name: "Dança", color: "bg-pink-500" },
@@ -308,6 +305,7 @@ const CATEGORIES = [
   { id: "noticias", name: "Notícias", color: "bg-red-500" },
 ];
 
+// DOM Elements
 const alphaSlider = document.getElementById("alpha-slider");
 const alphaValue = document.getElementById("alpha-value");
 const epsilonSlider = document.getElementById("epsilon-slider");
@@ -318,19 +316,31 @@ const userVectorViz = document.getElementById("user-vector-viz");
 const videoVectorViz = document.getElementById("video-vector-viz");
 const videoTitleEl = document.getElementById("video-title");
 const videoCategoryEl = document.getElementById("video-category");
+const candidatesList = document.getElementById(
+  "recommendation-candidates"
+);
 
+// Application State
 let userVector = normalize(new Array(CATEGORIES.length).fill(0.5));
 let currentVideo = null;
 let alpha = parseFloat(alphaSlider.value);
 let epsilon = parseFloat(epsilonSlider.value);
-let seenVideos = new Set(); // NOVO: A "memória" do algoritmo
+let seenVideos = new Set();
+const DECAY_FACTOR = 0.998;
+let profileHistory = [];
+let historyChart;
 
 function dot(a, b) {
   return a.reduce((s, v, i) => s + v * b[i], 0);
 }
 
 function updateUserVector(type) {
-  if (!currentVideo || type === "skip") return;
+  if (!currentVideo) return;
+  userVector = userVector.map((u) => u * DECAY_FACTOR);
+  if (type === "skip") {
+    userVector = normalize(userVector);
+    return;
+  }
   const v = currentVideo.vector;
   if (type === "like") {
     userVector = userVector.map((u, i) => (1 - alpha) * u + alpha * v[i]);
@@ -340,44 +350,21 @@ function updateUserVector(type) {
   userVector = normalize(userVector);
 }
 
-/**
- * Recomenda o próximo vídeo, evitando os que já foram vistos.
- * // MODIFICADO
- */
-function recommend() {
-  // 1. Filtra os vídeos para pegar apenas os que não foram vistos
+function getRankedVideos() {
   let availableVideos = videoPool.filter(
     (video) => !seenVideos.has(video.title)
   );
-
-  // 2. Se não houver vídeos disponíveis, limpa a memória e recomeça
   if (availableVideos.length === 0) {
-    console.log(
-      "Todos os vídeos foram vistos! Reiniciando o ciclo de recomendações."
-    );
+    console.log("Ciclo de vídeos reiniciado.");
     seenVideos.clear();
     availableVideos = videoPool;
   }
-
-  // 3. Calcula a afinidade e ordena os vídeos DISPONÍVEIS
-  const scoredVideos = availableVideos
+  return availableVideos
     .map((video) => ({
       ...video,
       affinity: dot(userVector, video.vector),
     }))
     .sort((a, b) => b.affinity - a.affinity);
-
-  // 4. Lógica de Exploração (Epsilon-Greedy)
-  let selection;
-  if (Math.random() < epsilon && scoredVideos.length > 1) {
-    const randomIndex =
-      Math.floor(Math.random() * (scoredVideos.length - 1)) + 1;
-    selection = scoredVideos[randomIndex];
-  } else {
-    selection = scoredVideos[0];
-  }
-
-  return selection;
 }
 
 function renderVector(container, vec) {
@@ -386,81 +373,165 @@ function renderVector(container, vec) {
     const percentage = Math.max(0, Math.min(100, val * 100));
     const category = CATEGORIES[i];
     const el = document.createElement("div");
-    el.innerHTML = `
-                    <div class="flex justify-between text-sm">
-                        <span class="font-medium">${category.name}</span>
-                        <span class="font-mono">${val.toFixed(2)}</span>
-                    </div>
-                    <div class="vector-bar-container mt-1">
-                        <div class="vector-bar ${category.color
-      }" style="width:${percentage}%"></div>
-                    </div>`;
+    el.innerHTML = `<div class="flex justify-between text-sm"><span class="font-medium">${category.name
+      }</span><span class="font-mono">${val.toFixed(
+        2
+      )}</span></div><div class="vector-bar-container mt-1"><div class="vector-bar ${category.color
+      }" style="width:${percentage}%"></div></div>`;
     container.appendChild(el);
   });
 }
 
-/**
- * Exibe o vídeo e o adiciona à lista de vistos.
- * // MODIFICADO
- */
 function displayVideo(video) {
   currentVideo = video;
-  seenVideos.add(video.title); // NOVO: Adiciona o vídeo à memória
-
+  seenVideos.add(video.title);
   const affinity = dot(userVector, video.vector);
   const mainCategoryIndex = video.vector.indexOf(
     Math.max(...video.vector)
   );
   const categoryInfo = CATEGORIES[mainCategoryIndex];
-
   videoTitleEl.textContent = video.title;
   videoCategoryEl.innerHTML = `Categoria Principal: <span class="font-bold ${categoryInfo.color.replace(
     "bg-",
     "text-"
   )}">${categoryInfo.name}</span>`;
-
   videoTitleEl.parentElement.style.opacity = 0;
   setTimeout(() => {
     videoTitleEl.parentElement.style.opacity = 1;
   }, 100);
-
   renderVector(userVectorViz, userVector);
   renderVector(videoVectorViz, video.vector);
-
   affinityBar.style.width = `${Math.max(0, affinity) * 100}%`;
   affinityScoreEl.textContent = affinity.toFixed(2);
 }
 
-// --- MANIPULADORES DE EVENTOS ---
+// --- FUNÇÕES DE UI (GRÁFICO E CANDIDATOS) ---
+function updateCandidatesUI(candidates) {
+  candidatesList.innerHTML = "";
+  if (!candidates || candidates.length === 0) return;
+  candidates.forEach((video, index) => {
+    const el = document.createElement("li");
+    const affinityPercentage = (
+      Math.max(0, video.affinity) * 100
+    ).toFixed(1);
+    el.innerHTML = `<strong class="w-6 inline-block">${index + 1
+      }.</strong> ${video.title
+      } <span class="font-mono text-blue-500">(${affinityPercentage}%)</span>`;
+    candidatesList.appendChild(el);
+  });
+}
 
+function getTailwindColor(bgColorClass) {
+  const colorMap = {
+    "bg-yellow-500": "#eab308",
+    "bg-pink-500": "#ec4899",
+    "bg-blue-500": "#3b82f6",
+    "bg-green-500": "#22c55e",
+    "bg-red-500": "#ef4444",
+  };
+  return colorMap[bgColorClass] || "#6b7280";
+}
+
+// MODIFICADO: Opções de escala e visualização do gráfico ajustadas
+function initializeChart() {
+  const ctx = document
+    .getElementById("profileHistoryChart")
+    .getContext("2d");
+  historyChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: CATEGORIES.map((cat) => ({
+        label: cat.name,
+        data: [],
+        borderColor: getTailwindColor(cat.color),
+        fill: false,
+        tension: 0.2,
+        borderWidth: 1.5, // Linha mais fina
+        pointRadius: 0, // Pontos de dados ocultos
+        pointHoverRadius: 4, // Ponto aparece ao passar o rato
+      })),
+    },
+    options: {
+      animation: { duration: 400 },
+      scales: { y: { beginAtZero: true, max: 1 } },
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: "bottom", // Legenda na parte inferior
+          labels: {
+            boxWidth: 12,
+            font: { size: 10 },
+          },
+        },
+      },
+    },
+  });
+}
+
+function updateChart() {
+  profileHistory.push([...userVector]);
+  historyChart.data.labels.push(profileHistory.length);
+  historyChart.data.datasets.forEach((dataset, index) => {
+    dataset.data.push(userVector[index]);
+  });
+  historyChart.update("none"); // 'none' para uma atualização mais suave sem re-animação
+}
+
+function resetChart() {
+  profileHistory = [];
+  if (historyChart) {
+    historyChart.data.labels = [];
+    historyChart.data.datasets.forEach((dataset) => {
+      dataset.data = [];
+    });
+    historyChart.update("none");
+  }
+}
+
+// --- MANIPULADORES DE EVENTOS ---
 window.handleInteraction = (type) => {
   updateUserVector(type);
-  const nextVideo = recommend();
-  displayVideo(nextVideo);
+  const candidates = getRankedVideos();
+  updateCandidatesUI(candidates.slice(0, 5));
+  let nextVideo;
+  if (Math.random() < epsilon && candidates.length > 1) {
+    nextVideo =
+      candidates[Math.floor(Math.random() * (candidates.length - 1)) + 1];
+  } else {
+    nextVideo = candidates[0];
+  }
+  if (nextVideo) displayVideo(nextVideo);
+  updateChart();
 };
 
-/**
- * Reseta o perfil e também a memória de vídeos vistos.
- * // MODIFICADO
- */
 window.resetProfile = () => {
   userVector = normalize(new Array(CATEGORIES.length).fill(0.5));
-  seenVideos.clear(); // NOVO: Limpa a memória
-  const nextVideo = recommend();
-  displayVideo(nextVideo);
+  seenVideos.clear();
+  resetChart();
+  const candidates = getRankedVideos();
+  updateCandidatesUI(candidates.slice(0, 5));
+  if (candidates[0]) displayVideo(candidates[0]);
+  updateChart();
 };
 
 alphaSlider.oninput = (e) => {
   alpha = parseFloat(e.target.value);
   alphaValue.textContent = alpha.toFixed(2);
 };
-
 epsilonSlider.oninput = (e) => {
   epsilon = parseFloat(e.target.value);
   epsilonValue.textContent = epsilon.toFixed(2);
 };
 
 window.onload = () => {
-  const firstVideo = recommend();
-  displayVideo(firstVideo);
+  initializeChart();
+  const rankedVideos = getRankedVideos();
+  const firstVideo = rankedVideos[0];
+  if (firstVideo) {
+    updateCandidatesUI(rankedVideos.slice(0, 5));
+    displayVideo(firstVideo);
+    updateChart();
+  }
 };
