@@ -319,6 +319,7 @@ const videoCategoryEl = document.getElementById("video-category");
 const candidatesList = document.getElementById(
   "recommendation-candidates"
 );
+const progressBar = document.getElementById("video-progress-bar");
 
 // Application State
 let userVector = normalize(new Array(CATEGORIES.length).fill(0.5));
@@ -334,18 +335,30 @@ function dot(a, b) {
   return a.reduce((s, v, i) => s + v * b[i], 0);
 }
 
-function updateUserVector(type) {
+function updateUserVector(type, engagementFactor = 1) {
   if (!currentVideo) return;
   userVector = userVector.map((u) => u * DECAY_FACTOR);
+
   if (type === "skip") {
+    const skipPenalty = 1 - engagementFactor;
+    const effectiveAlpha = alpha * skipPenalty;
+    const v = currentVideo.vector;
+    userVector = userVector.map(
+      (u, i) => u - effectiveAlpha * v[i] * 0.5
+    );
     userVector = normalize(userVector);
     return;
   }
+
+  const effectiveAlpha = alpha * engagementFactor;
   const v = currentVideo.vector;
+
   if (type === "like") {
-    userVector = userVector.map((u, i) => (1 - alpha) * u + alpha * v[i]);
+    userVector = userVector.map(
+      (u, i) => (1 - effectiveAlpha) * u + effectiveAlpha * v[i]
+    );
   } else if (type === "dislike") {
-    userVector = userVector.map((u, i) => u - alpha * v[i]);
+    userVector = userVector.map((u, i) => u - effectiveAlpha * v[i]);
   }
   userVector = normalize(userVector);
 }
@@ -385,6 +398,9 @@ function renderVector(container, vec) {
 function displayVideo(video) {
   currentVideo = video;
   seenVideos.add(video.title);
+  progressBar.classList.remove("progress-bar-animate");
+  void progressBar.offsetWidth;
+  progressBar.classList.add("progress-bar-animate");
   const affinity = dot(userVector, video.vector);
   const mainCategoryIndex = video.vector.indexOf(
     Math.max(...video.vector)
@@ -405,7 +421,6 @@ function displayVideo(video) {
   affinityScoreEl.textContent = affinity.toFixed(2);
 }
 
-// --- FUNÇÕES DE UI (GRÁFICO E CANDIDATOS) ---
 function updateCandidatesUI(candidates) {
   candidatesList.innerHTML = "";
   if (!candidates || candidates.length === 0) return;
@@ -432,7 +447,6 @@ function getTailwindColor(bgColorClass) {
   return colorMap[bgColorClass] || "#6b7280";
 }
 
-// MODIFICADO: Opções de escala e visualização do gráfico ajustadas
 function initializeChart() {
   const ctx = document
     .getElementById("profileHistoryChart")
@@ -447,9 +461,9 @@ function initializeChart() {
         borderColor: getTailwindColor(cat.color),
         fill: false,
         tension: 0.2,
-        borderWidth: 1.5, // Linha mais fina
-        pointRadius: 0, // Pontos de dados ocultos
-        pointHoverRadius: 4, // Ponto aparece ao passar o rato
+        borderWidth: 1.5,
+        pointRadius: 0,
+        pointHoverRadius: 4,
       })),
     },
     options: {
@@ -459,11 +473,8 @@ function initializeChart() {
       maintainAspectRatio: false,
       plugins: {
         legend: {
-          position: "bottom", // Legenda na parte inferior
-          labels: {
-            boxWidth: 12,
-            font: { size: 10 },
-          },
+          position: "bottom",
+          labels: { boxWidth: 12, font: { size: 10 } },
         },
       },
     },
@@ -471,12 +482,13 @@ function initializeChart() {
 }
 
 function updateChart() {
+  if (!historyChart) return;
   profileHistory.push([...userVector]);
   historyChart.data.labels.push(profileHistory.length);
   historyChart.data.datasets.forEach((dataset, index) => {
     dataset.data.push(userVector[index]);
   });
-  historyChart.update("none"); // 'none' para uma atualização mais suave sem re-animação
+  historyChart.update("none");
 }
 
 function resetChart() {
@@ -492,7 +504,13 @@ function resetChart() {
 
 // --- MANIPULADORES DE EVENTOS ---
 window.handleInteraction = (type) => {
-  updateUserVector(type);
+  const parentWidth = progressBar.parentElement.offsetWidth;
+  const currentWidth = progressBar.offsetWidth;
+  progressBar.classList.remove("progress-bar-animate");
+  const progress = parentWidth > 0 ? currentWidth / parentWidth : 0;
+  const engagementFactor = 0.5 + progress;
+
+  updateUserVector(type, engagementFactor);
   const candidates = getRankedVideos();
   updateCandidatesUI(candidates.slice(0, 5));
   let nextVideo;
@@ -502,7 +520,9 @@ window.handleInteraction = (type) => {
   } else {
     nextVideo = candidates[0];
   }
-  if (nextVideo) displayVideo(nextVideo);
+  if (nextVideo) {
+    displayVideo(nextVideo);
+  }
   updateChart();
 };
 
@@ -512,7 +532,9 @@ window.resetProfile = () => {
   resetChart();
   const candidates = getRankedVideos();
   updateCandidatesUI(candidates.slice(0, 5));
-  if (candidates[0]) displayVideo(candidates[0]);
+  if (candidates[0]) {
+    displayVideo(candidates[0]);
+  }
   updateChart();
 };
 
