@@ -305,31 +305,31 @@ const CATEGORIES = [
   { id: "noticias", name: "Notícias", color: "bg-red-500" },
 ];
 
-// DOM Elements
-const alphaSlider = document.getElementById("alpha-slider");
-const alphaValue = document.getElementById("alpha-value");
-const epsilonSlider = document.getElementById("epsilon-slider");
-const epsilonValue = document.getElementById("epsilon-value");
-const affinityBar = document.getElementById("affinity-bar");
-const affinityScoreEl = document.getElementById("affinity-score");
-const userVectorViz = document.getElementById("user-vector-viz");
-const videoVectorViz = document.getElementById("video-vector-viz");
-const videoTitleEl = document.getElementById("video-title");
-const videoCategoryEl = document.getElementById("video-category");
-const candidatesList = document.getElementById(
-  "recommendation-candidates"
-);
-const progressBar = document.getElementById("video-progress-bar");
+// CORRIGIDO: Adicionadas as constantes que faltavam
+const alphaSlider = document.getElementById("alpha-slider"),
+  alphaValue = document.getElementById("alpha-value"),
+  epsilonSlider = document.getElementById("epsilon-slider"),
+  epsilonValue = document.getElementById("epsilon-value"),
+  userVectorViz = document.getElementById("user-vector-viz"),
+  videoVectorViz = document.getElementById("video-vector-viz"),
+  videoTitleEl = document.getElementById("video-title"),
+  videoCategoryEl = document.getElementById("video-category"),
+  candidatesList = document.getElementById("recommendation-candidates"),
+  progressBar = document.getElementById("video-progress-bar"),
+  biasControlsContainer = document.getElementById("bias-controls"),
+  affinityBar = document.getElementById("affinity-bar"),
+  affinityScoreEl = document.getElementById("affinity-score");
 
 // Application State
-let userVector = normalize(new Array(CATEGORIES.length).fill(0.5));
-let currentVideo = null;
-let alpha = parseFloat(alphaSlider.value);
-let epsilon = parseFloat(epsilonSlider.value);
-let seenVideos = new Set();
+let userVector = normalize(new Array(CATEGORIES.length).fill(0.5)),
+  currentVideo = null,
+  alpha = parseFloat(alphaSlider.value),
+  epsilon = parseFloat(epsilonSlider.value),
+  seenVideos = new Set(),
+  profileHistory = [],
+  historyChart;
 const DECAY_FACTOR = 0.998;
-let profileHistory = [];
-let historyChart;
+let categoryBiases = {};
 
 function dot(a, b) {
   return a.reduce((s, v, i) => s + v * b[i], 0);
@@ -338,7 +338,6 @@ function dot(a, b) {
 function updateUserVector(type, engagementFactor = 1) {
   if (!currentVideo) return;
   userVector = userVector.map((u) => u * DECAY_FACTOR);
-
   if (type === "skip") {
     const skipPenalty = 1 - engagementFactor;
     const effectiveAlpha = alpha * skipPenalty;
@@ -349,10 +348,8 @@ function updateUserVector(type, engagementFactor = 1) {
     userVector = normalize(userVector);
     return;
   }
-
   const effectiveAlpha = alpha * engagementFactor;
   const v = currentVideo.vector;
-
   if (type === "like") {
     userVector = userVector.map(
       (u, i) => (1 - effectiveAlpha) * u + effectiveAlpha * v[i]
@@ -368,16 +365,20 @@ function getRankedVideos() {
     (video) => !seenVideos.has(video.title)
   );
   if (availableVideos.length === 0) {
-    console.log("Ciclo de vídeos reiniciado.");
     seenVideos.clear();
     availableVideos = videoPool;
   }
-  return availableVideos
-    .map((video) => ({
-      ...video,
-      affinity: dot(userVector, video.vector),
-    }))
-    .sort((a, b) => b.affinity - a.affinity);
+  const ranked = availableVideos.map((video) => {
+    const affinity = dot(userVector, video.vector);
+    const mainCategoryIndex = video.vector.indexOf(
+      Math.max(...video.vector)
+    );
+    const categoryId = CATEGORIES[mainCategoryIndex].id;
+    const bias = categoryBiases[categoryId] || 0;
+    const finalAffinity = affinity + bias;
+    return { ...video, affinity, finalAffinity };
+  });
+  return ranked.sort((a, b) => b.finalAffinity - a.finalAffinity);
 }
 
 function renderVector(container, vec) {
@@ -426,12 +427,22 @@ function updateCandidatesUI(candidates) {
   if (!candidates || candidates.length === 0) return;
   candidates.forEach((video, index) => {
     const el = document.createElement("li");
-    const affinityPercentage = (
-      Math.max(0, video.affinity) * 100
-    ).toFixed(1);
+    const finalScore = (Math.max(0, video.finalAffinity) * 100).toFixed(
+      0
+    );
+    const biasAmount = (video.finalAffinity - video.affinity) * 100;
+    const biasSign = biasAmount >= 0 ? "+" : "";
+    const biasColor =
+      biasAmount > 0.1
+        ? "text-green-500"
+        : biasAmount < -0.1
+          ? "text-red-500"
+          : "text-gray-500";
     el.innerHTML = `<strong class="w-6 inline-block">${index + 1
       }.</strong> ${video.title
-      } <span class="font-mono text-blue-500">(${affinityPercentage}%)</span>`;
+      } <strong class="font-mono text-blue-500">${finalScore}%</strong> <span class="text-xs ${biasColor}">(${biasSign}${biasAmount.toFixed(
+        0
+      )}%)</span>`;
     candidatesList.appendChild(el);
   });
 }
@@ -502,17 +513,39 @@ function resetChart() {
   }
 }
 
-// --- MANIPULADORES DE EVENTOS ---
+function updateRecommendations() {
+  const candidates = getRankedVideos();
+  updateCandidatesUI(candidates.slice(0, 5));
+  return candidates;
+}
+
+function initializeBiasControls() {
+  CATEGORIES.forEach((cat) => {
+    categoryBiases[cat.id] = 0;
+    const controlEl = document.createElement("div");
+    controlEl.innerHTML = `<label class="block font-semibold mb-1 text-sm">${cat.name}: <span id="bias-value-${cat.id}" class="font-bold text-sky-600 dark:text-sky-400">0%</span></label><input id="bias-slider-${cat.id}" type="range" min="-0.5" max="0.5" step="0.01" value="0" class="w-full h-2 rounded-lg bg-gray-200 dark:bg-gray-700"/>`;
+    biasControlsContainer.appendChild(controlEl);
+    document
+      .getElementById(`bias-slider-${cat.id}`)
+      .addEventListener("input", (e) => {
+        const biasValue = parseFloat(e.target.value);
+        categoryBiases[cat.id] = biasValue;
+        document.getElementById(`bias-value-${cat.id}`).textContent = `${(
+          biasValue * 100
+        ).toFixed(0)}%`;
+        updateRecommendations();
+      });
+  });
+}
+
 window.handleInteraction = (type) => {
   const parentWidth = progressBar.parentElement.offsetWidth;
   const currentWidth = progressBar.offsetWidth;
   progressBar.classList.remove("progress-bar-animate");
   const progress = parentWidth > 0 ? currentWidth / parentWidth : 0;
   const engagementFactor = 0.5 + progress;
-
   updateUserVector(type, engagementFactor);
-  const candidates = getRankedVideos();
-  updateCandidatesUI(candidates.slice(0, 5));
+  const candidates = updateRecommendations();
   let nextVideo;
   if (Math.random() < epsilon && candidates.length > 1) {
     nextVideo =
@@ -520,21 +553,26 @@ window.handleInteraction = (type) => {
   } else {
     nextVideo = candidates[0];
   }
-  if (nextVideo) {
-    displayVideo(nextVideo);
-  }
+  if (nextVideo) displayVideo(nextVideo);
   updateChart();
 };
 
 window.resetProfile = () => {
-  userVector = normalize(new Array(CATEGORIES.length).fill(0.5));
+  userVector = normalize(new Array(CATEGORIES.length).fill(0.5)); // CORRIGIDO
   seenVideos.clear();
   resetChart();
-  const candidates = getRankedVideos();
-  updateCandidatesUI(candidates.slice(0, 5));
-  if (candidates[0]) {
-    displayVideo(candidates[0]);
-  }
+  Object.keys(categoryBiases).forEach((key) => {
+    categoryBiases[key] = 0;
+  });
+  document.querySelectorAll('input[type="range"]').forEach((slider) => {
+    if (slider.id.startsWith("bias-slider-")) slider.value = 0;
+  });
+  document.querySelectorAll('span[id^="bias-value-"]').forEach((span) => {
+    span.textContent = "0%";
+  });
+  const candidates = updateRecommendations();
+  const firstVideo = candidates[0];
+  if (firstVideo) displayVideo(firstVideo);
   updateChart();
 };
 
@@ -548,11 +586,12 @@ epsilonSlider.oninput = (e) => {
 };
 
 window.onload = () => {
+  initializeBiasControls();
   initializeChart();
   const rankedVideos = getRankedVideos();
+  updateCandidatesUI(rankedVideos.slice(0, 5));
   const firstVideo = rankedVideos[0];
   if (firstVideo) {
-    updateCandidatesUI(rankedVideos.slice(0, 5));
     displayVideo(firstVideo);
     updateChart();
   }
