@@ -305,20 +305,38 @@ const CATEGORIES = [
   { id: "noticias", name: "Notícias", color: "bg-red-500" },
 ];
 
-// CORRIGIDO: Adicionadas as constantes que faltavam
-const alphaSlider = document.getElementById("alpha-slider"),
-  alphaValue = document.getElementById("alpha-value"),
-  epsilonSlider = document.getElementById("epsilon-slider"),
-  epsilonValue = document.getElementById("epsilon-value"),
-  userVectorViz = document.getElementById("user-vector-viz"),
+const PERSONAS = [
+  {
+    nome: "Júlia, a chef",
+    icone: "👩‍🍳",
+    vetor: normalize([0.1, 0.3, 0.2, 0.9, 0.4]),
+  },
+  {
+    nome: "Marcos, o gamer",
+    icone: "🎮",
+    vetor: normalize([0.8, 0.2, 0.9, 0.1, 0.3]),
+  },
+  {
+    nome: "Ana, a dançarina",
+    icone: "💃",
+    vetor: normalize([0.4, 0.9, 0.1, 0.2, 0.1]),
+  },
+];
+const SIMILARITY_THRESHOLD = 0.85;
+
+// DOM Elements
+const userVectorViz = document.getElementById("user-vector-viz"),
   videoVectorViz = document.getElementById("video-vector-viz"),
   videoTitleEl = document.getElementById("video-title"),
   videoCategoryEl = document.getElementById("video-category"),
   candidatesList = document.getElementById("recommendation-candidates"),
   progressBar = document.getElementById("video-progress-bar"),
   biasControlsContainer = document.getElementById("bias-controls"),
-  affinityBar = document.getElementById("affinity-bar"),
-  affinityScoreEl = document.getElementById("affinity-score");
+  personasContainer = document.getElementById("personas-container");
+const alphaSlider = document.getElementById("alpha-slider"),
+  alphaValue = document.getElementById("alpha-value"),
+  epsilonSlider = document.getElementById("epsilon-slider"),
+  epsilonValue = document.getElementById("epsilon-value");
 
 // Application State
 let userVector = normalize(new Array(CATEGORIES.length).fill(0.5)),
@@ -368,16 +386,60 @@ function getRankedVideos() {
     seenVideos.clear();
     availableVideos = videoPool;
   }
-  const ranked = availableVideos.map((video) => {
-    const affinity = dot(userVector, video.vector);
-    const mainCategoryIndex = video.vector.indexOf(
-      Math.max(...video.vector)
+
+  let bestMatchPersona = null;
+  let maxSimilarity = 0;
+
+  PERSONAS.forEach((persona) => {
+    const similarity = dot(userVector, persona.vetor);
+    if (similarity > maxSimilarity) maxSimilarity = similarity;
+
+    const simPercentage = similarity * 100;
+    const simElement = document.getElementById(
+      `persona-sim-${persona.nome}`
     );
-    const categoryId = CATEGORIES[mainCategoryIndex].id;
-    const bias = categoryBiases[categoryId] || 0;
-    const finalAffinity = affinity + bias;
-    return { ...video, affinity, finalAffinity };
+    const barElement = document.getElementById(
+      `persona-bar-${persona.nome}`
+    );
+    if (simElement)
+      simElement.textContent = `${simPercentage.toFixed(0)}%`;
+    if (barElement) barElement.style.width = `${simPercentage}%`;
+
+    if (similarity > SIMILARITY_THRESHOLD && !bestMatchPersona) {
+      bestMatchPersona = persona;
+    }
   });
+
+  let collaborativePickTitle = null;
+  if (bestMatchPersona) {
+    const personaTopPick = availableVideos.sort(
+      (a, b) =>
+        dot(b.vector, bestMatchPersona.vetor) -
+        dot(a.vector, bestMatchPersona.vetor)
+    )[0];
+    if (personaTopPick) {
+      collaborativePickTitle = personaTopPick.title;
+    }
+  }
+
+  let ranked = availableVideos.map((video) => {
+    const affinity = dot(userVector, video.vector);
+    const categoryId =
+      CATEGORIES[video.vector.indexOf(Math.max(...video.vector))].id;
+    const bias = categoryBiases[categoryId] || 0;
+    let finalAffinity = affinity + bias;
+    let reason = null;
+
+    if (
+      collaborativePickTitle &&
+      collaborativePickTitle === video.title
+    ) {
+      finalAffinity += 0.25;
+      reason = { personaName: bestMatchPersona.nome };
+    }
+    return { ...video, affinity, finalAffinity, reason };
+  });
+
   return ranked.sort((a, b) => b.finalAffinity - a.finalAffinity);
 }
 
@@ -402,7 +464,6 @@ function displayVideo(video) {
   progressBar.classList.remove("progress-bar-animate");
   void progressBar.offsetWidth;
   progressBar.classList.add("progress-bar-animate");
-  const affinity = dot(userVector, video.vector);
   const mainCategoryIndex = video.vector.indexOf(
     Math.max(...video.vector)
   );
@@ -418,8 +479,6 @@ function displayVideo(video) {
   }, 100);
   renderVector(userVectorViz, userVector);
   renderVector(videoVectorViz, video.vector);
-  affinityBar.style.width = `${Math.max(0, affinity) * 100}%`;
-  affinityScoreEl.textContent = affinity.toFixed(2);
 }
 
 function updateCandidatesUI(candidates) {
@@ -430,19 +489,15 @@ function updateCandidatesUI(candidates) {
     const finalScore = (Math.max(0, video.finalAffinity) * 100).toFixed(
       0
     );
-    const biasAmount = (video.finalAffinity - video.affinity) * 100;
-    const biasSign = biasAmount >= 0 ? "+" : "";
-    const biasColor =
-      biasAmount > 0.1
-        ? "text-green-500"
-        : biasAmount < -0.1
-          ? "text-red-500"
-          : "text-gray-500";
-    el.innerHTML = `<strong class="w-6 inline-block">${index + 1
+
+    let reasonHtml = "";
+    if (video.reason) {
+      reasonHtml = `<div class="text-xs text-purple-600 dark:text-purple-400">✨ Via ${video.reason.personaName}</div>`;
+    }
+
+    el.innerHTML = `<div><strong class="w-6 inline-block">${index + 1
       }.</strong> ${video.title
-      } <strong class="font-mono text-blue-500">${finalScore}%</strong> <span class="text-xs ${biasColor}">(${biasSign}${biasAmount.toFixed(
-        0
-      )}%)</span>`;
+      } <strong class="font-mono text-blue-500">${finalScore}%</strong>${reasonHtml}</div>`;
     candidatesList.appendChild(el);
   });
 }
@@ -538,6 +593,24 @@ function initializeBiasControls() {
   });
 }
 
+function initializePersonasUI() {
+  PERSONAS.forEach((persona) => {
+    const personaEl = document.createElement("div");
+    personaEl.className = "flex items-center space-x-3";
+    personaEl.innerHTML = `
+                    <div class="text-3xl">${persona.icone}</div>
+                    <div class="flex-1">
+                        <div class="font-bold text-sm text-purple-900 dark:text-purple-200">${persona.nome}</div>
+                        <div class="w-full bg-gray-200 dark:bg-gray-700 h-4 rounded-full overflow-hidden">
+                            <div id="persona-bar-${persona.nome}" class="h-full bg-purple-500 rounded-full transition-all duration-500" style="width: 0%;"></div>
+                        </div>
+                    </div>
+                    <div id="persona-sim-${persona.nome}" class="font-mono font-bold text-purple-900 dark:text-purple-200 w-12 text-right">0%</div>
+                `;
+    personasContainer.appendChild(personaEl);
+  });
+}
+
 window.handleInteraction = (type) => {
   const parentWidth = progressBar.parentElement.offsetWidth;
   const currentWidth = progressBar.offsetWidth;
@@ -558,7 +631,7 @@ window.handleInteraction = (type) => {
 };
 
 window.resetProfile = () => {
-  userVector = normalize(new Array(CATEGORIES.length).fill(0.5)); // CORRIGIDO
+  userVector = normalize(new Array(CATEGORIES.length).fill(0.5));
   seenVideos.clear();
   resetChart();
   Object.keys(categoryBiases).forEach((key) => {
@@ -587,9 +660,9 @@ epsilonSlider.oninput = (e) => {
 
 window.onload = () => {
   initializeBiasControls();
+  initializePersonasUI();
   initializeChart();
-  const rankedVideos = getRankedVideos();
-  updateCandidatesUI(rankedVideos.slice(0, 5));
+  const rankedVideos = updateRecommendations();
   const firstVideo = rankedVideos[0];
   if (firstVideo) {
     displayVideo(firstVideo);
